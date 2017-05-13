@@ -1,0 +1,313 @@
+---
+title: "Jones_Final_Project"
+author: "Steve Jones"
+date: "May 08, 2017"
+output:
+  html_document:
+    depth: 4
+    highlight: tango
+    number_sections: no
+    theme: united
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+---
+# Purpose
+The input dataset contains information about 710 patient encounters. 50% of the patient within this dataset experience a critical event (Code Blue or Rapid Response) The remaining patients did not have an event.
+The primary goal is to predict a critical event using the patients MEWS (Modified Early Warning Score). The secondary goal is to identify actionable trigger points based on MEWS scores.
+
+https://en.wikipedia.org/wiki/Early_warning_score
+
+The Modified Early Warning System (MEWS) is a tool for nurses to help monitor their patients and improve how quickly a patient experiencing a sudden decline receives clinical care. The color-banded patient chart gives a visual cue as to when to calculate a MEWS score.Scoring is based on:
+Respiratory rate
+Heart rate
+Systolic blood pressure
+Conscious level
+Temperature
+Hourly urine output (for previous 2 hours)
+
+
+
+
+
+
+# Environment Prep - Install and load packages
+
+##### If package not already installed then install it
+```{r, echo = FALSE, warning=FALSE, message=FALSE, results='hide'}
+if (!require("ggplot2",character.only = TRUE)) (install.packages("ggplot2",dep=TRUE))
+if (!require("MASS",character.only = TRUE)) (install.packages("MASS",dep=TRUE))
+if (!require("knitr",character.only = TRUE)) (install.packages("knitr",dep=TRUE))
+if (!require("xtable",character.only = TRUE)) (install.packages("xtable",dep=TRUE))
+if (!require("dplyr",character.only = TRUE)) (install.packages("dplyr",dep=TRUE))
+if (!require("psych",character.only = TRUE)) (install.packages("psych",dep=TRUE))
+if (!require("stringr",character.only = TRUE)) (install.packages("stringr",dep=TRUE))
+if (!require("car",character.only = TRUE)) (install.packages("car",dep=TRUE))
+if (!require("faraway",character.only = TRUE)) (install.packages("faraway",dep=TRUE))
+if (!require("aod",character.only = TRUE)) (install.packages("aod",dep=TRUE))
+if (!require("Rcpp",character.only = TRUE)) (install.packages("Rcpp",dep=TRUE))
+if (!require("leaps",character.only = TRUE)) (install.packages("leaps",dep=TRUE))
+if (!require("ISLR",character.only = TRUE)) (install.packages("ISLR",dep=TRUE))
+if (!require("AUC",character.only = TRUE)) (install.packages("AUC",dep=TRUE))
+if (!require("ROCR",character.only = TRUE)) (install.packages("ROCR",dep=TRUE))
+if (!require("Amelia",character.only = TRUE)) (install.packages("Amelia",dep=TRUE))
+if (!require("popbio",character.only = TRUE)) (install.packages("popbio",dep=TRUE))
+if (!require("gdata",character.only = TRUE)) (install.packages("gdata",dep=TRUE))
+if (!require("reshape",character.only = TRUE)) (install.packages("reshape",dep=TRUE))
+if (!require("rpart",character.only = TRUE)) (install.packages("rpart",dep=TRUE))
+if (!require("randomForest",character.only = TRUE)) (install.packages("randomForest",dep=TRUE))
+if (!require("ResourceSelection",character.only = TRUE)) (install.packages("ResourceSelection",dep=TRUE))
+if (!require("boot",character.only = TRUE)) (install.packages("boot",dep=TRUE))
+if (!require("pander",character.only = TRUE)) (install.packages("pander",dep=TRUE))
+if (!require("cowplot",character.only = TRUE)) (install.packages("cowplot",dep=TRUE))
+
+
+##### Load packages
+library(plyr)
+
+```
+
+
+# Data Exploration
+  In this section, I load the data and explore it
+  
+```{r}
+dev.off()
+setwd("C:/Rockhurst/ADM/Data")
+MEWSData <- read.csv("MEW_FinalProject.csv")
+
+
+str(MEWSData)
+names(MEWSData)
+summary(MEWSData)
+MEWSDATA_EVENTS <- subset(MEWSData, Event==1)
+
+#create table with event volumes by variables
+table(MEWSData$Event)
+table(MEWSData$Level.Of.Care)
+table(MEWSData$Gender)
+table(MEWSData$MEWS_4)
+table(MEWSData$MEWS_8)
+table(MEWSData$MEWS_12)
+table(MEWSData$Delta_at_4)
+table(MEWSData$T12H_Delta)
+table(MEWSData$MEWS4_Tdelta)
+
+
+library(psych)
+pairs.panels(MEWSData)
+pairs(MEWSData)
+
+
+library(lattice)
+
+
+par(mfrow=c(1,4))
+
+histogram(MEWSData$MEWS_4, type = "count",col="red")
+title("MEWS_Pre4")
+
+histogram(MEWSData$MEWS_8, type = "count", col="yellow")
+title("MEWS_Pre8")
+
+histogram(MEWSData$MEWS_12, type = "count", col="green")
+title("MEWS_Pre12")
+
+histogram(MEWSData$T12H_Delta, type = "count", col="cyan")
+title("12HR_Delta")
+
+```
+
+
+# Data Preparation
+
+ I performed the following transformations on the data either R or directly in Excel:
+ 
+- I randomly selected 80% of the observations as a model training and the remaining 20% was used for testing 
+
+- Create dummy variables
+- Data Summary Analysis (R)
+
+```{r}
+
+library(tm)
+library(caret)
+
+# Validation approach using 80-20 split
+set.seed(123)
+#inTrain <- createDataPartition(y=MEWSData$Event, p=0.8, list=FALSE)
+
+#MEWS_train<-MEWSData[inTrain,] 
+#MEWS_test<-MEWSData[-inTrain,]  
+
+# Backup
+#MEWS_train2 <- MEWS_train
+#MEWS_test2 <- MEWS_test
+
+# Data set if I need it
+#MEWS_train3 <- MEWS_train
+#MEWS_test3 <- MEWS_test
+library(class)
+set.seed(1234)
+
+#MEWS4_Subset <- MEWSData[,c(1,4,9)]
+
+MEWS4_Subset2 <- MEWSDATA_EVENTS[,c(1,4)]
+
+
+
+
+
+``` 
+# Model Building
+
+ In this section I created my models. The following are the three different approaches that will be used here:
+
+- Model 1: This model will be created by using k-means clustering.
+- Model 2: This model will be created by using Naive_Bayes. 
+# Model Development - k-MEANS CLUSTERING
+
+```{r}
+#finding the optimum no. of clusters
+#wssplot <- function(data, nc=15, seed=1234){
+ # wss <-(nrow(data)-1)*sum(apply(data,2,var))
+#  for(i in 2:nc){
+ #   set.seed(seed)
+#    wss[i] <- sum(kmeans(data, centers=i)$withinss)}
+#  plot(1:nc, wss, type="b", xlab="Number of Clusters",
+ #      ylab="Within groups sum of squares", col="red")}
+
+#wssplot(MEWS4_Subset2)
+
+library(class)
+set.seed(1234)
+
+MEWS4_Cluster <- kmeans(MEWS4_Subset2,3)
+MEWS4_Cluster
+
+
+
+
+
+
+```
+Using the k-means clustering results - I created another dataset 
+
+```{r}
+setwd("C:/Rockhurst/ADM/Data")
+MEWS_DS <- read.csv("MEW_FinalProject.csv")
+
+table(MEWS_DS)
+
+
+
+MEWS_DS_Working <- MEWS_DS
+
+library(psych)
+#### Level Of Care
+MEWS_DS_Working<- cbind(MEWS_DS_Working,dummy.code(MEWS_DS_Working$Level.Of.Care))
+
+#Delete original catagorical variable
+MEWS_DS_Working$Level.Of.Care <- NULL
+
+
+
+
+##################################################
+
+#### Gender
+MEWS_DS_Working<- cbind(MEWS_DS_Working,dummy.code(MEWS_DS_Working$Gender))
+
+#Delete original catagorical variable
+MEWS_DS_Working$Gender <- NULL
+
+##########################################
+
+MEWS_DS_Working1 <- MEWS_DS_Working[,c(1:2,7,11:15,17:18)]
+
+
+
+MEWS_DS_Working1$Event <- factor(MEWS_DS_Working1$Event)
+
+num.vars <- sapply(MEWS_DS_Working1, is.numeric)
+MEWS_DS_Working1[num.vars] <- lapply(MEWS_DS_Working1[num.vars], scale)
+
+```
+# Model Development - NAIVE BAYES
+ 
+```{r}
+# Validation approach using 80-20 split
+set.seed(123)
+TRAINING_SET<-data.frame(MEWS_DS_Working1[1:568, ]) 
+
+
+TEST_SET<-data.frame(MEWS_DS_Working1[569:710, ])  
+
+mews_train_labels<-MEWS_DS_Working1[1:568,1]
+mews_test_labels<-MEWS_DS_Working1[569:710,1]
+
+
+Pred_mews_knn<-knn(train=TRAINING_SET, test=TEST_SET, cl=mews_train_labels, k=27)
+
+library(gmodels)
+
+CrossTable(x=mews_test_labels, y=Pred_mews_knn, prob.chisq=FALSE)
+
+TP = 61
+TN = 73
+FP = 3
+FN = 5
+
+Sensitivity = TP/(TP+FN) #true positive rate; recall; TP/(TP+FN)
+Specificity = TN/(TN+FP) #how often is the prediction negative when actual is negative?
+Precision = TP/(TP+FP) #how often is prediction positive when actual is positive?
+Accuracy = (TP+TN)/(TP+TN+FP+FN)
+
+Value<-round(c(TP,TN,FP,FN,Sensitivity,Specificity,Precision,Accuracy),digits=3)
+Measure<-c("True Positive","True Negative","False Positive","False Negative","Sensitivity/Recall=TP/(TN+FP)",
+           "Specificity=TN/(TN+TP)","Precision=TP/(TP+FP)","Accuracy=(TP+TN)/total")
+
+table<-as.data.frame(cbind(Measure,Value))
+
+library(knitr)
+
+kable(table)
+
+#############################################################################
+
+library(e1071)
+NaivesModel <- naiveBayes(TRAINING_SET, TRAINING_SET$Event)
+
+## Step 4: Evaluating model performance ----
+library(caret)
+Naives_test_pred <- predict(NaivesModel, TEST_SET)
+
+
+confusionMatrix(Naives_test_pred, TEST_SET$Event, positive="1")
+
+```
+
+
+
+
+
+
+# Final Recommendation
+
+ Cluster analysis indicates possible actionable MEWS point values: 
+MEWS of 0-3 - Proposed action continue to monitor as usual
+MEWS of 4-5 -  Possible action could be increase monitoring to every hour
+MEWS 6+ -  Notify provider   
+While the knn model performed at an accuracy of 94% and the Naïve Bayes classification model performed at 74%.  The Naïve bayes performed at 100% in specificity vs 96% specificity of the knn classification model. The knn model also had false negatives vs no false negatives in the the Naïve bayes model. 
+The trade-off of specificity over accuracy could result in lives saved and the recommendation is to select the Naïve bayes classification model.
+
+# Incorporate feedback
+1. An explanation of the MEW score would be helpful, as I didn't fully understand how it was calculated. I added additional info about the MEWS to the purpose section.
+
+
+2. Presentation could have been a little more clearer. I'll continue to develop this presentation using the suggestion of performing analysis on All MEWS scores since Nov 2016
+I notice a fellow classmate made use of Tableau - I will produce another presentation using Tableau to create the visuals. I'm unable to obtain approval for a new dataset prior to deadline.
+
